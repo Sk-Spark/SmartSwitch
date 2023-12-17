@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#include <ESPAsyncWebServer.h>
+#include <ESP32WebServer.h>
 #include <ESP32Servo.h>
 #include <ArduinoJson.h>
 
@@ -15,58 +15,42 @@ const char *password = "123456789";
 Servo myservo;
 int servoPosition = 90;
 char *switchStatus = "OFF";
-AsyncWebServer server(80);
+ESP32WebServer server(80);
 
-bool handleTest(AsyncWebServerRequest *request, uint8_t *datas)
+void handleOptions()
 {
-
-  Serial.printf("[REQUEST]\t%s\r\n", (const char *)datas);
-
-  // DynamicJsonBuffer jsonBuffer;
-  // JsonObject &_test = jsonBuffer.parseObject((const char *)datas);
-  // if (!_test.success())
-  //   return 0;
-
-  // if (!_test.containsKey("command"))
-  //   return 0;
-  // String _command = _test["command"].asString();
-  // Serial.println(_command);
-
-  return 1;
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS"); // Add other methods if needed
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  server.send(200, "text/plain", "");
 }
 
-void handleOptions(AsyncWebServerRequest *request)
-{
-  request->send(200, "text/plain", "");
+void handleRoot()
+{ 
+  server.send(200, "text/html", index_html);
 }
 
-void handleRoot(AsyncWebServerRequest *request)
-{
-  request->send_P(200, "text/html", index_html);
-}
-
-void handleServo(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
+void handleServo()
 {
   StaticJsonDocument<200> root;
   String message = "Save State:\n";
   uint pin, value;
-
-  // String postBody = data;
+  String postBody = server.arg("plain");
   DynamicJsonDocument doc(512);
-  DeserializationError error = deserializeJson(doc, data);
+  DeserializationError error = deserializeJson(doc, postBody);
   if (error)
   {
+    // if the file didn't open, print an error:
     Serial.print(F("Error parsing JSON "));
     Serial.println(error.c_str());
     String msg = error.c_str();
-    request->send(400, "text/html", "Error in parsing JSON body!<br>" + msg);
+    server.send(400, F("text/html"), "Error in parsin json body! <br>" + msg);
   }
   else
   {
     JsonObject postObj = doc.as<JsonObject>();
     Serial.println("Received body:");
-    Serial.println((const char *)data);
-
+    Serial.println(postBody);
     myservo.attach(SERVO_PIN);
 
     if (postObj.containsKey("pin"))
@@ -82,6 +66,11 @@ void handleServo(AsyncWebServerRequest *request, uint8_t *data, size_t len, size
       message += val + '\n';
       value = val.toInt();
     }
+
+    // Send CORS headers
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS"); // Add other methods if needed
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (servoPosition != value)
     {
@@ -105,11 +94,11 @@ void handleServo(AsyncWebServerRequest *request, uint8_t *data, size_t len, size
         servoPosition = 0;
       }
       myservo.write(servoPosition);
-      request->send(200, "text/plain", "OK");
+      server.send(200, "text/plain", "OK");
     }
     else
     {
-      request->send(400, "text/plain", "Bad Request");
+      server.send(400, "text/plain", "Bad Request");
     }
     delay(1000);
     myservo.detach();
@@ -135,31 +124,28 @@ void setup()
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 
-  server.on("/ping", HTTP_GET, [](AsyncWebServerRequest *request)
-            { request->send(200, "text/plain", "Pong (this works as well)"); });
+  server.on("/ping", [](){ server.send(200, "text/plain", "Pong (this works as well)"); });
 
-  server.on("/", HTTP_GET, handleRoot);
+  // server.on("/", HTTP_GET, handleRoot);
 
-  server.on("/main.js", HTTP_GET, [](AsyncWebServerRequest *request)
-            {
+  server.on("/", [](){server.send(200, "text/html", index_html); });
+
+  // server.on("/main.js", HTTP_GET, handleMainJs);
+  server.on("/main.js", [](){
     Serial.println("main.js");
-    request->send_P(200, "application/javascript", main_js); });
+    server.send(200, "text/plain", main_js); 
+  });
 
-  server.on("/main.css", HTTP_GET, [](AsyncWebServerRequest *request)
-            { request->send_P(200, "text/css", main_css); });
+  server.on("/main.css", [](){ server.send(200, "text/css", main_css); });
 
   // Handle OPTIONS requests for CORS
   server.on("/servo", HTTP_OPTIONS, handleOptions);
 
-  server.on("/servo", HTTP_POST, [](AsyncWebServerRequest * request){}, NULL, handleServo);
-
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "*"); 
-
+  server.on("/servo", HTTP_POST, handleServo);
   server.begin();
 }
 
 void loop()
 {
-  // server.handleClient();
+  server.handleClient();
 }
