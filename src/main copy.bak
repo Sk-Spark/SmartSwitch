@@ -1,0 +1,68 @@
+#include <WiFi.h>
+#include <ESP32WebServer.h>
+#include <ESP32Servo.h>
+
+#include "index.html.h"
+
+const char* ssid = "SparkMI";
+const char* password = "123456789";
+
+#define SERVO_PIN 2 // D2 for ESP8266, GPIO2 for ESP32
+Servo myservo;
+int servoPosition = 90;
+char* switchStatus = "OFF";
+ESP32WebServer server(80);
+
+void handleRoot() {
+  String html = "<html><head>  <style>    .switch {position: relative;width: 60px;height: 34px;margin-top: 10px;margin-left: 20px;    }    .switch input {opacity: 0;width: 0;height: 0;    }    .slider {position: absolute;cursor: pointer;top: 0;left: 0;right: 0;bottom: 0;background-color: #ccc;-webkit-transition: .4s;transition: .4s;    }    .slider:before {position: absolute;content: '';height: 26px;width: 26px;left: 4px;bottom: 4px;background-color: white;-webkit-transition: .4s;transition: .4s;    }    input:checked+.slider {background-color: #2196F3;    }    input:focus+.slider {box-shadow: 0 0 1px #2196F3;    }    input:checked+.slider:before {-webkit-transform: translateX(26px);-ms-transform: translateX(26px);transform: translateX(26px);    }    .slider.round {border-radius: 34px;    }    .slider.round:before {border-radius: 50%;    }  </style>  <script>    document.addEventListener('DOMContentLoaded', function () {const servoCheckbox = document.getElementById('servoCheckbox');const apiUrl = '/servo';servoCheckbox.addEventListener('change', function () {  const isChecked = this.checked;  if (isChecked) {    makeApiCall('90');  } else {    makeApiCall('0');  }});function makeApiCall(action) {  fetch(apiUrl, {    method: 'POST',    body: action,    headers: {'Content-Type': 'application/json',    },  })    .then(response => {if (!response.ok) {  throw new Error('Network response was not ok');}return response.json();    })    .then(data => {console.log('API response:', data);    })    .catch(error => {console.error('There was a problem with the fetch operation:', error);    });}    });  </script></head><body style='align-content: center;'>  <h1>Smart Switch</h1>  <div style='display:inline-flex;'>    <h3>Geyser</h3>    <label class='switch'><input type='checkbox' id='servoCheckbox'><span class='slider round'></span>    </label>  </div></body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void handleServo() {
+  myservo.attach(SERVO_PIN);
+  String body = server.arg("plain");
+  Serial.println("Received body:");
+  Serial.println(body);
+  if (server.hasArg("plain")) {
+    servoPosition = server.arg("plain").toInt();
+    Serial.println("servoPosition");
+    Serial.println(servoPosition);
+    if (servoPosition != 0) {
+      switchStatus = "ON";
+    }
+    myservo.write(servoPosition);
+    server.send(200, "text/plain", "OK");
+  } else {
+    server.send(400, "text/plain", "Bad Request");
+  }
+  myservo.detach();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/servo", HTTP_POST, handleServo);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}
+
+
