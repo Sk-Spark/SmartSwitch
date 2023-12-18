@@ -41,10 +41,13 @@ $range-label-width: 60px !default;
   align-items: center;
   background: #0a0a0a;
   border-radius: $field-border-radius;
-  margin-bottom: 2rem;
+  // margin-bottom: 2rem;
   padding: 0px 10px;
   padding-bottom: 20px;
   justify-content: space-between;
+  margin:5px;
+  min-width: 100px;
+  min-height: 80px;
 
   &::before,
   &::after {
